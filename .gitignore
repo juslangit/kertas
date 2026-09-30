@@ -1,0 +1,7 @@
+.build/
+build/
+.env
+*.pdf
+!tests/fixtures/*.pdf
+docs/index.html
+.DS_Store
