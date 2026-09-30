@@ -6,32 +6,47 @@ import PDFKit
 final class InlineField: NSObject, NSTextFieldDelegate {
     private let field = NSTextField()
     private var done: ((String?) -> Void)?
+    private var scrollObserver: NSObjectProtocol?
 
     init(canvas: Canvas, page: PDFPage, rect: NSRect, text: String, font: NSFont, color: NSColor,
          minWidth: CGFloat, done: @escaping (String?) -> Void) {
         self.done = done
         super.init()
-        guard let host = canvas.documentView else { return }
-        let onScreen = host.convert(canvas.convert(rect, from: page), from: canvas)
-        let scaled = NSFont(descriptor: font.fontDescriptor, size: font.pointSize * canvas.scaleFactor) ?? font
-        let height = ceil(scaled.ascender - scaled.descender + scaled.leading) + 8
+        // The box sits on top of the page view, not inside PDFKit's zoomed
+        // content: in there it was zoomed a second time and drawn as a blurry
+        // bitmap. So the size is page size × zoom, applied once, here.
+        let onScreen = canvas.convert(rect, from: page)
+        let size = font.pointSize * canvas.scaleFactor
+        let shown = NSFont(name: font.fontName, size: size) ?? .systemFont(ofSize: size)
+        let height = ceil(shown.ascender - shown.descender + shown.leading) + 6
 
-        field.font = scaled
+        // Paper colours whatever the Mac's appearance: a dark box over a white page looked broken.
+        field.appearance = NSAppearance(named: .aqua)
+        field.font = shown
         field.stringValue = text
         field.textColor = color
-        field.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.96)
+        field.backgroundColor = .white
         field.drawsBackground = true
         field.isBordered = true
-        field.bezelStyle = .squareBezel
+        field.isBezeled = false
         field.focusRingType = .exterior
         field.usesSingleLineMode = true
         field.cell?.isScrollable = true
         field.delegate = self
-        field.frame = NSRect(x: onScreen.minX - 4, y: onScreen.midY - height / 2,
-                             width: max(onScreen.width + 80, minWidth), height: height)
-        host.addSubview(field)
+        field.frame = NSRect(x: onScreen.minX - 3, y: onScreen.midY - height / 2,
+                             width: max(onScreen.width + 60, minWidth), height: height)
+        canvas.addSubview(field)
         field.window?.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: (text as NSString).length, length: 0)
+
+        // Scrolling would leave the box behind its line, so scrolling keeps what was typed.
+        if let clip = canvas.documentView?.enclosingScrollView?.contentView {
+            clip.postsBoundsChangedNotifications = true
+            scrollObserver = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
+                self?.finish()
+            }
+        }
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -50,9 +65,10 @@ final class InlineField: NSObject, NSTextFieldDelegate {
     private func close(with value: String?) {
         guard let done else { return }
         self.done = nil
+        if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
         let window = field.window
         DispatchQueue.main.async { self.field.removeFromSuperview() }
-        if let pdfView = field.superview?.enclosingScrollView?.superview { window?.makeFirstResponder(pdfView) }
+        if let canvas = field.superview { window?.makeFirstResponder(canvas) }
         done(value)
     }
 }

@@ -69,6 +69,16 @@ check("new text is there", "RM 199.00" in text, text)
 check("neighbouring lines untouched", "Invoice number 1042" in text and "Thank you for your business" in text, text)
 check("keeps a bold serif", res.get("font") == "tibo", res)
 
+print("fonts")
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+from helper import base14_for
+check("Chrome's Helvetica Neue stays sans, though flagged serif",
+      base14_for({"font": "HelveticaNeue", "flags": 4}) == "helv")
+check("its bold stays bold sans", base14_for({"font": "HelveticaNeue-Bold", "flags": 20}) == "hebo")
+check("Times stays serif", base14_for({"font": "TimesNewRomanPSMT", "flags": 4}) == "tiro")
+check("an unnamed serif font is still serif", base14_for({"font": "ABCD", "flags": 4}) == "tiro")
+check("Courier stays mono", base14_for({"font": "CourierNewPSMT", "flags": 8}) == "cour")
+
 print("insert-image")
 png = os.path.join(work, "dot.png")
 pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 20, 20), False)

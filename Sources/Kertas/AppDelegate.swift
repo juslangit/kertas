@@ -64,6 +64,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             editor.fileURL = url
             editor.showWindow(nil)
             NSDocumentController.shared.noteNewRecentDocumentURL(url)
+            // For checking the Edit Text box without a mouse:
+            //   open -a Kertas file.pdf --args -KertasCheckEditAt "x,y"   (PDF points, page 1)
+            if let spot = UserDefaults.standard.string(forKey: "KertasCheckEditAt")?
+                .split(separator: ",").compactMap({ Double($0) }), spot.count == 2,
+               let page = editor.pdf?.page(at: 0) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    editor.setTool(.editText)
+                    editor.beginEditText(on: page, at: NSPoint(x: spot[0], y: spot[1]))
+                }
+            }
         } else {
             openAsNew([url])
         }

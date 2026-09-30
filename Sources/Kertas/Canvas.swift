@@ -87,14 +87,23 @@ final class Canvas: PDFView {
         overlay.frame = host.bounds
         overlay.box = selected.map { host.convert(convert($0.annotation.bounds, from: $0.page), from: self) }
         if let stroke {
+            // Each point goes through the same conversion as the selection box.
+            // Scaling by scaleFactor instead zoomed the stroke twice, because
+            // the document view is already drawn at the zoom.
+            let toHost = { (p: NSPoint) in host.convert(self.convert(p, from: stroke.page), from: self) }
             let path = NSBezierPath()
-            path.append(stroke.path)
-            let origin = host.convert(convert(NSPoint.zero, from: stroke.page), from: self)
-            let scale = scaleFactor
-            var t = AffineTransform(translationByX: origin.x, byY: origin.y)
-            t.scale(scale)
-            path.transform(using: t)
-            path.lineWidth = (editor?.lineWidth ?? 2) * scale
+            var points = [NSPoint](repeating: .zero, count: 3)
+            for i in 0..<stroke.path.elementCount {
+                switch stroke.path.element(at: i, associatedPoints: &points) {
+                case .moveTo: path.move(to: toHost(points[0]))
+                case .lineTo: path.line(to: toHost(points[0]))
+                default: break
+                }
+            }
+            let unit = hypot(toHost(NSPoint(x: 1, y: 0)).x - toHost(.zero).x, toHost(NSPoint(x: 1, y: 0)).y - toHost(.zero).y)
+            path.lineWidth = (editor?.lineWidth ?? 2) * unit
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
             overlay.stroke = path
             overlay.strokeColor = editor?.inkColor ?? .black
         } else {

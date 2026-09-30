@@ -64,11 +64,16 @@ def base14_for(span):
     """The closest of PDF's built-in fonts, for when the real one isn't on this Mac."""
     flags = span["flags"]
     bold, italic = bool(flags & 16), bool(flags & 2)
-    serif, mono = bool(flags & 4), bool(flags & 8)
     name = span["font"].lower()
-    if mono or "courier" in name or "mono" in name:
+    # The name is trusted before the flags: Chrome marks the Helvetica Neue it
+    # embeds as serif, which would turn a sans-serif CV into Times.
+    sans_names = ("helvetica", "arial", "sans", "inter", "roboto", "calibri", "verdana", "segoe", "gothic")
+    serif_names = ("times", "georgia", "garamond", "cambria", "serif", "minion", "palatino", "baskerville")
+    if "courier" in name or "mono" in name or (flags & 8 and not any(n in name for n in sans_names)):
         family = ["cour", "cobo", "coit", "cobi"]
-    elif serif or "times" in name or "serif" in name and "sans" not in name:
+    elif any(n in name for n in sans_names):
+        family = ["helv", "hebo", "heit", "hebi"]
+    elif any(n in name for n in serif_names) or flags & 4:
         family = ["tiro", "tibo", "tiit", "tibi"]
     else:
         family = ["helv", "hebo", "heit", "hebi"]
