@@ -88,6 +88,38 @@ out = os.path.join(work, "image.pdf")
 res = run("insert-image", src, out, 0, 300, 600, 400, 700, png)
 check("image lands on the page", res.get("ok") and len(pymupdf.open(out)[0].get_images()) == 1, res)
 
+print("remove highlights")
+marked = os.path.join(work, "marked.pdf")
+doc = pymupdf.open()
+page = doc.new_page(width=595, height=842)
+page.draw_rect(pymupdf.Rect(70, 88, 200, 104), color=None, fill=(1, 0.953, 0.769))     # yellow, like the CV's
+page.draw_rect(pymupdf.Rect(70, 128, 200, 144), color=None, fill=(0.8, 1, 0.8))        # green marker
+page.draw_rect(pymupdf.Rect(70, 300, 500, 301), color=None, fill=(0.85, 0.87, 0.9))    # grey rule: not a highlight
+page.draw_rect(pymupdf.Rect(0, 400, 595, 842), color=None, fill=(0.9, 0.95, 1))        # page-sized tint: not one
+page.insert_text((72, 100), "Phone [phone]", fontname="helv", fontsize=12)
+page.insert_text((72, 140), "Second marked line", fontname="helv", fontsize=12)
+doc.save(marked)
+
+
+def fills(path):
+    return sorted(tuple(round(c, 2) for c in d["fill"]) for d in pymupdf.open(path)[0].get_drawings() if d.get("fill"))
+
+
+out = os.path.join(work, "unmarked-one.pdf")
+res = run("remove-mark", marked, out, 0, 100, 842 - 96)   # a click on the yellow box, in PDF space
+check("a click removes that highlight", res.get("removed") == 1 and (1.0, 0.95, 0.77) not in fills(out), res)
+check("the other highlight stays", (0.8, 1.0, 0.8) in fills(out), fills(out))
+check("the text on it stays", "Phone [phone]" in pymupdf.open(out)[0].get_text(), pymupdf.open(out)[0].get_text())
+res = run("remove-mark", marked, out, 0, 300, 842 - 200)  # empty paper
+check("a click on nothing changes nothing", res.get("changed") is False, res)
+out = os.path.join(work, "unmarked-all.pdf")
+res = run("remove-marks", marked, out)
+left = fills(out)
+check("remove all takes both highlights", res.get("removed") == 2 and (0.8, 1.0, 0.8) not in left, res)
+check("rules and backgrounds are kept", (0.85, 0.87, 0.9) in left and (0.9, 0.95, 1.0) in left, left)
+text = pymupdf.open(out)[0].get_text()
+check("all text is kept", "Phone [phone]" in text and "Second marked line" in text, text)
+
 print("compress")
 big = os.path.join(work, "big.pdf")
 doc = pymupdf.open()

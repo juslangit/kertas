@@ -229,6 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } + [
             sep(),
             item("Draw New Signature…", #selector(EditorController.drawSignature(_:))),
+            item("Remove All Highlights", #selector(EditorController.removeAllHighlights(_:)), "h", [.command, .shift]),
             sep(),
             item("Make Searchable (OCR)", #selector(EditorController.makeSearchable(_:))),
         ])

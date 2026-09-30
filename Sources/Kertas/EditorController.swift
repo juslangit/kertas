@@ -301,6 +301,13 @@ final class EditorController: NSWindowController, NSWindowDelegate, NSToolbarDel
             self.setBusy(nil)
             switch result {
             case .success(let json):
+                // Nothing was changed (e.g. no highlight where you clicked): keep
+                // the document as it is and add nothing to Undo.
+                if (json["changed"] as? Bool) == false {
+                    self.status("")
+                    done?(json)
+                    return
+                }
                 guard let data = try? Data(contentsOf: output) else {
                     showError("The helper finished but wrote no file.", in: self.window)
                     return
@@ -445,6 +452,45 @@ final class EditorController: NSWindowController, NSWindowDelegate, NSToolbarDel
                 page.addAnnotation(mark)
             }
         }
+    }
+
+    /// Removes the highlight under a click: one added as an annotation (by
+    /// Kertas or another reader), or else one printed into the page, which the
+    /// helper deletes as a shape while leaving the text on it.
+    func removeHighlight(on page: PDFPage, at point: NSPoint) {
+        if let mark = page.annotations.last(where: { $0.type == "Highlight" && $0.bounds.contains(point) }) {
+            checkpoint("Remove Highlight")
+            page.removeAnnotation(mark)
+            status("Highlight removed.")
+            return
+        }
+        guard let doc = pdf else { return }
+        let index = doc.index(for: page)
+        transform("Remove Highlight", busy: "Removing the highlight…", { i, o in
+            ["remove-mark", i, o, "\(index)", String(format: "%.3f", point.x), String(format: "%.3f", point.y)]
+        }, done: { json in
+            self.status((json["removed"] as? Int ?? 0) > 0
+                ? "Highlight removed. The text on it is untouched."
+                : "There's no highlight there. Drag across text to add one.")
+        })
+    }
+
+    @objc func removeAllHighlights(_ sender: Any?) {
+        guard pdf != nil else { return }
+        transform("Remove All Highlights", busy: "Removing highlights…", { i, o in ["remove-marks", i, o] },
+                  done: { json in
+            let printed = json["removed"] as? Int ?? 0
+            // Annotations come back in the reloaded document, so look them up again there.
+            guard let now = self.pdf else { return }
+            let marks = (0..<now.pageCount).flatMap { i in
+                now.page(at: i).map { page in page.annotations.filter { $0.type == "Highlight" }.map { (page, $0) } } ?? []
+            }
+            if printed == 0 && !marks.isEmpty { self.checkpoint("Remove All Highlights") }
+            for (page, mark) in marks { page.removeAnnotation(mark) }
+            let total = printed + marks.count
+            self.status(total == 0 ? "This PDF has no highlights."
+                : "Removed \(total) highlight\(total == 1 ? "" : "s"). The text is untouched.")
+        })
     }
 
     /// Adds pen strokes as one ink annotation. The paths arrive in page space.
@@ -890,7 +936,7 @@ final class EditorController: NSWindowController, NSWindowDelegate, NSToolbarDel
             return hasDoc && (pdf?.pageCount ?? 0) > 1
         case #selector(printDocument(_:)), #selector(saveDocument(_:)), #selector(saveDocumentAs(_:)),
              #selector(exportWord(_:)), #selector(exportImages(_:)), #selector(compress(_:)),
-             #selector(makeSearchable(_:)), #selector(rotateLeft(_:)), #selector(rotateRight(_:)),
+             #selector(makeSearchable(_:)), #selector(removeAllHighlights(_:)), #selector(rotateLeft(_:)), #selector(rotateRight(_:)),
              #selector(duplicatePages(_:)), #selector(insertFromFile(_:)), #selector(insertBlankPage(_:)),
              #selector(extractPages(_:)), #selector(splitPages(_:)), #selector(zoomIn(_:)),
              #selector(zoomOut(_:)), #selector(zoomFit(_:)), #selector(nextPage(_:)),

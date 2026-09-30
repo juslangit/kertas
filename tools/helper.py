@@ -12,6 +12,8 @@ uses, and are converted to MuPDF space (origin top-left) here.
     helper.py span-info    IN PAGE X0 Y0 X1 Y1
     helper.py edit-text    IN OUT PAGE X0 Y0 X1 Y1 TEXT [FONTFILE]
     helper.py insert-image IN OUT PAGE X0 Y0 X1 Y1 IMAGE
+    helper.py remove-mark  IN OUT PAGE X Y
+    helper.py remove-marks IN OUT
     helper.py compress     IN OUT
     helper.py to-docx      IN OUT
     helper.py ocr-layer    IN OUT WORDS.json
@@ -146,6 +148,60 @@ def insert_image(src, dst, page_no, x0, y0, x1, y1, image):
     print(json.dumps({"ok": True}))
 
 
+def is_highlight(drawing, page):
+    """A printed highlight: a filled shape in a light, clearly coloured tint,
+    no bigger than a few lines. White and grey fills (backgrounds, rules,
+    table shading) and anything page-sized are left alone."""
+    fill = drawing.get("fill")
+    if not fill or drawing.get("fill_opacity", 1) == 0:
+        return False
+    r, g, b = fill[:3]
+    light = 0.299 * r + 0.587 * g + 0.114 * b > 0.55
+    tinted = (max(r, g, b) - min(r, g, b)) / max(max(r, g, b), 1e-6) > 0.12
+    box = pymupdf.Rect(drawing["rect"])
+    small = box.height < 60 and box.get_area() < page.rect.get_area() * 0.4
+    return light and tinted and small
+
+
+def remove_shapes(page, boxes):
+    """Deletes the drawn shapes inside each box and nothing else: text on top
+    of them and pictures stay exactly where they are."""
+    for box in boxes:
+        page.add_redact_annot(pymupdf.Rect(box) + (-0.5, -0.5, 0.5, 0.5), fill=False)
+    page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE,
+                          graphics=pymupdf.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED,
+                          text=pymupdf.PDF_REDACT_TEXT_NONE)
+
+
+def remove_mark(src, dst, page_no, x, y):
+    """Removes the printed highlight under a click (the smallest, if they overlap)."""
+    doc = pymupdf.open(src)
+    page = doc[int(page_no)]
+    point = pymupdf.Point(float(x), float(y)) * page.transformation_matrix
+    hits = [d for d in page.get_drawings() if is_highlight(d, page) and pymupdf.Rect(d["rect"]).contains(point)]
+    if not hits:
+        print(json.dumps({"ok": True, "changed": False, "removed": 0}))
+        return
+    smallest = min(hits, key=lambda d: pymupdf.Rect(d["rect"]).get_area())
+    remove_shapes(page, [smallest["rect"]])
+    doc.save(dst, garbage=3, deflate=True)
+    print(json.dumps({"ok": True, "changed": True, "removed": 1}))
+
+
+def remove_marks(src, dst):
+    """Removes every printed highlight in the document."""
+    doc = pymupdf.open(src)
+    removed = 0
+    for page in doc:
+        boxes = [d["rect"] for d in page.get_drawings() if is_highlight(d, page)]
+        if boxes:
+            remove_shapes(page, boxes)
+            removed += len(boxes)
+    if removed:
+        doc.save(dst, garbage=3, deflate=True)
+    print(json.dumps({"ok": True, "changed": removed > 0, "removed": removed}))
+
+
 def compress(src, dst):
     before = os.path.getsize(src)
     doc = pymupdf.open(src)
@@ -200,6 +256,8 @@ COMMANDS = {
     "span-info": span_info,
     "edit-text": edit_text,
     "insert-image": insert_image,
+    "remove-mark": remove_mark,
+    "remove-marks": remove_marks,
     "compress": compress,
     "to-docx": to_docx,
     "ocr-layer": ocr_layer,

@@ -33,7 +33,7 @@ enum Tool: Int, CaseIterable {
         case .select: "Click to select an annotation, drag to move it, Delete to remove it. Double-click text you added to change it."
         case .editText: "Click a line of text in the PDF to rewrite it. Return saves, Esc cancels."
         case .addText: "Click where the text should go, type, then press Return."
-        case .highlight: "Drag across text to highlight it."
+        case .highlight: "Drag across text to highlight it. Click a highlight to remove it, even one printed in the PDF."
         case .draw: "Drag to draw. Colour and thickness come from the toolbar."
         case .signature: "Click where your signature should go."
         case .image: "Click where the picture should go."
@@ -50,6 +50,7 @@ final class Canvas: PDFView {
     private(set) var selected: (annotation: PDFAnnotation, page: PDFPage)?
     private var drag: (start: NSPoint, original: NSRect, moved: Bool)?
     private var stroke: (path: NSBezierPath, page: PDFPage)?
+    private var press: (page: PDFPage, point: NSPoint)?
     private let overlay = Overlay()
 
     override init(frame: NSRect) {
@@ -154,6 +155,7 @@ final class Canvas: PDFView {
         case .addText:
             editor.beginAddText(on: page, at: point, editing: nil)
         case .highlight:
+            press = (page, point)
             super.mouseDown(with: event)
         case .draw:
             let path = NSBezierPath()
@@ -204,7 +206,11 @@ final class Canvas: PDFView {
             if let selection = currentSelection, !(selection.string ?? "").isEmpty {
                 editor?.highlight(selection)
                 clearSelection()
+            } else if let press {
+                // A click rather than a drag: take off the highlight under it.
+                editor?.removeHighlight(on: press.page, at: press.point)
             }
+            press = nil
         default:
             super.mouseUp(with: event)
         }
