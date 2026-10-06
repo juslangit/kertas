@@ -22,7 +22,7 @@ cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
 
 # The shared local certificate keeps the app's identity fixed across rebuilds,
 # so macOS asks about folder access once, not after every build.
-"$HOME/Desktop/project/3d/bengkel/common/sign.sh" "$APP"
+"$HOME/Desktop/projects/3d/bengkel/common/sign.sh" "$APP"
 
 rm -rf /Applications/Kertas.app
 cp -R "$APP" /Applications/Kertas.app
